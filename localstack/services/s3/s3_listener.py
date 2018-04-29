@@ -559,29 +559,29 @@ class ProxyListenerS3(ProxyListener):
             send_notifications(method, bucket_name, object_path)
 
         # publish event for creation/deletion of buckets:
-        if method in ('PUT', 'DELETE') and ('/' not in path[1:] or len(path[1:].split('/')[1]) <= 0):
-            event_type = (event_publisher.EVENT_S3_CREATE_BUCKET if method == 'PUT'
-                else event_publisher.EVENT_S3_DELETE_BUCKET)
-            event_publisher.fire_event(event_type, payload={'n': event_publisher.get_hash(bucket_name)})
+        # if method in ('PUT', 'DELETE') and ('/' not in path[1:] or len(path[1:].split('/')[1]) <= 0):
+        #    event_type = (event_publisher.EVENT_S3_CREATE_BUCKET if method == 'PUT'
+        #        else event_publisher.EVENT_S3_DELETE_BUCKET)
+        #    event_publisher.fire_event(event_type, payload={'n': event_publisher.get_hash(bucket_name)})
 
+        LOGGER.debug('return_response - After publish event for creation/deletion of buckets: method "%s"' % method)
         # fix an upstream issue in moto S3 (see https://github.com/localstack/localstack/issues/382)
         if method == 'PUT' and parsed.query == 'policy':
             response._content = ''
             response.status_code = 204
             return response
 
-        if method == 'PUT':
-            response._content = ''
-            response.status_code = 200
-            return response
-
+        LOGGER.debug('return_response - After method == PUT and parsed.query == policy: method "%s"' % method)
+        LOGGER.debug('return_response - After method == PUT: response "%s"' % response)
         if response:
             # append CORS headers to response
             append_cors_headers(bucket_name, request_method=method, request_headers=headers, response=response)
+            LOGGER.debug('return_response - After append_cors_headers: response "%s"' % response)
 
             # append user defined metadata headers to response
             append_user_defined_metadata_headers(bucket_name, request_method=method, request_headers=headers, response=response)
 
+            LOGGER.debug('return_response - After append_user_defined_metadata_headers: response "%s"' % response)
             response_content_str = None
             try:
                 response_content_str = to_str(response._content)
@@ -608,6 +608,7 @@ class ProxyListenerS3(ProxyListener):
             if method == 'DELETE':
                 response.headers['content-length'] = len(response._content)
 
+            LOGGER.debug('return_response - before return: response "%s"' % response)
             return response
 
 # instantiate listener
