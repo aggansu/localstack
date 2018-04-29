@@ -7,7 +7,9 @@ import com.amazonaws.services.lambda.runtime.RequestStreamHandler;
 import com.amazonaws.services.lambda.runtime.events.KinesisEvent;
 import com.amazonaws.services.lambda.runtime.events.KinesisEvent.KinesisEventRecord;
 import com.amazonaws.services.lambda.runtime.events.KinesisEvent.Record;
+import com.amazonaws.services.lambda.runtime.events.S3Event;
 import com.amazonaws.services.lambda.runtime.events.SNSEvent;
+import com.amazonaws.services.s3.event.S3EventNotification;
 import com.amazonaws.util.StringInputStream;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -91,6 +93,60 @@ public class LambdaExecutor {
 
 				inputObject = DDBEventParser.parse(records);
 
+			}
+			else if (records.stream().anyMatch(record -> record.containsKey("s3"))) {
+				List<S3EventNotification.S3EventNotificationRecord> notificationRecords = new LinkedList<>();
+				for (Map<String, Object> record : records) {
+
+					String awsRegion = (String) get(record, "awsRegion");
+                    String eventName = (String) get(record, "eventName");
+                    String eventSource = (String) get(record, "eventSource");
+                    String eventTime = (String) get(record, "eventTime");
+                    String eventVersion = (String) get(record, "eventVersion");
+
+					Map<String, Object> requestParametersMap = (Map<String, Object>) get(record, "requestParameters");
+					String sourceIPAddress = (String) get(requestParametersMap, "sourceIPAddress");
+                    S3EventNotification.RequestParametersEntity requestParameters = new S3EventNotification.RequestParametersEntity(sourceIPAddress);
+
+					Map<String, Object> responseElementsMap = (Map<String, Object>) get(record, "responseElements");
+					String xAmzId2 = (String) get(responseElementsMap, "xAmzId2");
+					String xAmzRequestId = (String) get(responseElementsMap, "xAmzRequestId");
+                    S3EventNotification.ResponseElementsEntity responseElements = new S3EventNotification.ResponseElementsEntity(xAmzId2, xAmzRequestId);
+
+					Map<String, Object> s3EntityMap = (Map<String, Object>) get(record, "s3");
+					Map<String, Object> bucketMap = (Map<String, Object>) get(s3EntityMap, "bucket"); 
+					Map<String, Object> objectMap = (Map<String, Object>) get(s3EntityMap, "object");    
+					Map<String, Object> ownerIdentityMap = (Map<String, Object>) get(bucketMap, "ownerIdentity");     
+
+                    String configurationId = (String) get(s3EntityMap, "configurationId");
+                    String s3SchemaVersion = (String) get(s3EntityMap, "s3SchemaVersion");
+
+					String ownerIdentityPrincipalId = (String) get(ownerIdentityMap, "principalId");
+					S3EventNotification.UserIdentityEntity userIdenityEntity = new S3EventNotification.UserIdentityEntity(ownerIdentityPrincipalId);
+
+					String name = (String) get(bucketMap, "name");
+					String arn = (String) get(bucketMap, "arn");
+					S3EventNotification.S3BucketEntity s3BucketEntity = new S3EventNotification.S3BucketEntity(name, userIdenityEntity, arn);        
+
+					String key = (String) get(objectMap, "key");
+					Long size = Long.valueOf((int) get(objectMap, "size"));
+					String eTag = (String) get(objectMap, "eTag");
+				    String versionId = (String) get(objectMap, "versionId");
+					String sequencer = (String) get(objectMap, "sequencer");
+					S3EventNotification.S3ObjectEntity s3ObjectEntity = new S3EventNotification.S3ObjectEntity(key, size, eTag, versionId, sequencer);
+					
+					S3EventNotification.S3Entity s3Entity = new S3EventNotification.S3Entity(configurationId, s3BucketEntity, s3ObjectEntity, s3SchemaVersion);
+
+					Map<String, Object> userIdentityMap = (Map<String, Object>) get(record, "userIdentity");
+					String userIdentityPrincipalId = (String) get(userIdentityMap, "principalId");
+                    S3EventNotification.UserIdentityEntity userIdentity = new S3EventNotification.UserIdentityEntity(userIdentityPrincipalId);
+					S3EventNotification.S3EventNotificationRecord r = new S3EventNotification.S3EventNotificationRecord(awsRegion, eventName, eventSource, eventTime, eventVersion, requestParameters, responseElements, s3Entity, userIdentity);
+					
+					notificationRecords.add(r);
+				}
+		
+				S3Event s3Event = new S3Event(notificationRecords);
+				inputObject = s3Event;
 			}
 			//TODO: Support other events (S3, SQS...)
 		}
