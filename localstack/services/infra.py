@@ -318,8 +318,8 @@ def check_aws_credentials():
         pass
     if not credentials:
         # set temporary dummy credentials
-        os.environ['AWS_ACCESS_KEY_ID'] = 'LocalStackDummyAccessKey'
-        os.environ['AWS_SECRET_ACCESS_KEY'] = 'LocalStackDummySecretKey'
+        os.environ['AWS_ACCESS_KEY_ID'] = 'foobar'
+        os.environ['AWS_SECRET_ACCESS_KEY'] = 'foobar'
     session = boto3.Session()
     credentials = session.get_credentials()
     assert credentials

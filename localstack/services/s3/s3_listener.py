@@ -27,6 +27,9 @@ BUCKET_CORS = {}
 # mappings for bucket lifecycle settings
 BUCKET_LIFECYCLE = {}
 
+# mappings for bucket user defined metadata
+BUCKET_USER_DEFINED_METADATA = {}
+
 # set up logger
 LOGGER = logging.getLogger(__name__)
 
@@ -74,6 +77,9 @@ def prefix_with_slash(s):
 
 
 def get_event_message(event_name, bucket_name, file_name='testfile.txt', file_size=1024):
+    LOGGER.debug('get_event_message - event_name: "%s"' % event_name)
+    LOGGER.debug('get_event_message - bucket_name: "%s"' % bucket_name)
+    LOGGER.debug('get_event_message - file_name: "%s"' % file_name)
     # Based on: http://docs.aws.amazon.com/AmazonS3/latest/dev/notification-content-structure.html
     return {
         'Records': [{
@@ -122,15 +128,22 @@ def queue_url_for_arn(queue_arn):
 
 
 def send_notifications(method, bucket_name, object_path):
+    LOGGER.debug('send_notifications - method: "%s"' % method)
+    LOGGER.debug('send_notifications - bucket_name: "%s"' % bucket_name)
+    LOGGER.debug('send_notifications - object_path: "%s"' % object_path)
     for bucket, config in iteritems(S3_NOTIFICATIONS):
+        LOGGER.debug('send_notifications - iteritems loop - bucket: "%s"' % bucket)
         if bucket == bucket_name:
+            LOGGER.debug('send_notifications - iteritems loop - bucket match: "%s"' % bucket_name)
             action = {'PUT': 'ObjectCreated', 'POST': 'ObjectCreated', 'DELETE': 'ObjectRemoved'}[method]
             # TODO: support more detailed methods, e.g., DeleteMarkerCreated
             # http://docs.aws.amazon.com/AmazonS3/latest/dev/NotificationHowTo.html
             api_method = {'PUT': 'Put', 'POST': 'Post', 'DELETE': 'Delete'}[method]
             event_name = '%s:%s' % (action, api_method)
+            LOGGER.debug('send_notifications - iteritems loop - event_name: "%s"' % event_name)
             if (event_type_matches(config['Event'], action, api_method) and
                     filter_rules_match(config.get('Filter'), object_path)):
+                LOGGER.debug('send_notifications - construct message - event_name: "%s"' % event_name)
                 # send notification
                 message = get_event_message(
                     event_name=event_name, bucket_name=bucket_name,
@@ -154,6 +167,7 @@ def send_notifications(method, bucket_name, object_path):
                             (bucket_name, config['Topic']))
                 # CloudFunction and LambdaFunction are semantically identical
                 lambda_function_config = config.get('CloudFunction') or config.get('LambdaFunction')
+                LOGGER.debug('send_notifications - invoke? - lambda_function_config: "%s"' % lambda_function_config)
                 if lambda_function_config:
                     # make sure we don't run into a socket timeout
                     connection_config = botocore.config.Config(read_timeout=300)
@@ -233,6 +247,27 @@ def append_cors_headers(bucket_name, request_method, request_headers, response):
                 # TODO: check whether bucket versioning is enabled and return proper version id
                 response.headers[header] = 'null'
 
+def set_user_defined_metadata(bucket_name, query_map):
+    LOGGER.debug('set_user_defined_metadata - bucket_name: "%s"' % bucket_name)
+    if not query_map:
+        return
+    BUCKET_USER_DEFINED_METADATA[bucket_name] = {}
+    for key in query_map:
+        LOGGER.debug('set_user_defined_metadata - key: "%s"' % key)
+        LOGGER.debug('set_user_defined_metadata - value: "%s"' % query_map[key])
+        if key.startswith('x-amz-meta') and query_map[key] is not None:
+            LOGGER.debug('set_user_defined_metadata - add - value: "%s"' % query_map[key][0])
+            BUCKET_USER_DEFINED_METADATA[bucket_name][key] = query_map[key][0]
+
+def append_user_defined_metadata_headers(bucket_name, request_method, request_headers, response):
+    LOGGER.debug('append_user_defined_metadata_headers - bucket_name: "%s"' % bucket_name)
+    metadata = BUCKET_USER_DEFINED_METADATA.get(bucket_name)
+    if not metadata:
+        return
+    for key in metadata:
+        LOGGER.debug('append_user_defined_metadata_headers - key: "%s"' % key)
+        LOGGER.debug('append_user_defined_metadata_headers - value: "%s"' % metadata[key])
+        response.headers[key] = metadata[key]
 
 def get_lifecycle(bucket_name):
     response = Response()
@@ -294,12 +329,14 @@ def expand_redirect_url(starting_url, key, bucket):
 
 def get_bucket_name(path, headers):
     parsed = urlparse.urlparse(path)
-
+    LOGGER.debug('get_bucket_name - path: "%s"' % path)
     # try pick the bucket_name from the path
     bucket_name = parsed.path.split('/')[1]
-
+    LOGGER.debug('get_bucket_name - bucket_name: "%s"' % bucket_name)
     host = headers['host']
-
+    LOGGER.debug('get_bucket_name - host: "%s"' % host)
+    LOGGER.debug('get_bucket_name - HOSTNAME: "%s"' % HOSTNAME)
+    LOGGER.debug('get_bucket_name - HOSTNAME_EXTERNAL: "%s"' % HOSTNAME_EXTERNAL)
     # is the hostname not starting a bucket name?
     if host.startswith(HOSTNAME) or host.startswith(HOSTNAME_EXTERNAL):
         return bucket_name
@@ -325,18 +362,19 @@ def get_bucket_name(path, headers):
         match = pattern.match(host)
         if match:
             bucket_name = match.groups()[0]
-
+            LOGGER.debug('get_bucket_name - match: "%s"' % bucket_name)
             break
 
     # we're either returning the original bucket_name,
     # or a pattern matched the host and we're returning that name instead
+    LOGGER.debug('get_bucket_name - bucket name: "%s"' % bucket_name)
     return bucket_name
 
 
 class ProxyListenerS3(ProxyListener):
 
     def forward_request(self, method, path, data, headers):
-
+        LOGGER.debug('forward_request - method: "%s"' % method)
         modified_data = None
 
         # If this request contains streaming v4 authentication signatures, strip them from the message
@@ -365,9 +403,25 @@ class ProxyListenerS3(ProxyListener):
         parsed = urlparse.urlparse(path)
         query = parsed.query
         path = parsed.path
-        bucket = path.split('/')[1]
+        LOGGER.debug('forward_request - query: "%s"' % query)
+        LOGGER.debug('forward_request - path: "%s"' % path)
+        LOGGER.debug('forward_request - host: "%s"' % headers['host'])
+
+        # Check bucket name in host
+        bucket = None
+        hostname_parts = headers['host'].split('.')
+        if len(hostname_parts) > 1:
+            bucket = hostname_parts[0]
+        
+        # No bucket name in host, check in path.
+        if (not bucket or len(bucket) == 0):
+            bucket = get_bucket_name(path, headers)
+        
+        LOGGER.debug('forward_request - Bucket name: "%s"' % bucket)
+
         query_map = urlparse.parse_qs(query)
         if query == 'notification' or 'notification' in query_map:
+            LOGGER.debug('forward_request - query: "%s"' % query)
             response = Response()
             response.status_code = 200
             if method == 'GET':
@@ -390,10 +444,12 @@ class ProxyListenerS3(ProxyListener):
                 response._content = result
 
             if method == 'PUT':
+                LOGGER.debug('forward_request - method: "%s"' % method)
                 parsed = xmltodict.parse(data)
                 notif_config = parsed.get('NotificationConfiguration')
                 S3_NOTIFICATIONS.pop(bucket, None)
                 for dest in NOTIFICATION_DESTINATION_TYPES:
+                    LOGGER.debug('forward_request - NOTIFICATION_DESTINATION_TYPES - dest: "%s"' % dest)
                     config = notif_config.get('%sConfiguration' % (dest))
                     if config:
                         events = config.get('Event')
@@ -412,6 +468,7 @@ class ProxyListenerS3(ProxyListener):
                             'Filter': event_filter
                         }
                         # TODO: what if we have multiple destinations - would we overwrite the config?
+                        LOGGER.debug('forward_request - S3_NOTIFICATIONS - bucket: "%s"' % bucket)
                         S3_NOTIFICATIONS[bucket] = clone(notification_details)
 
             # return response for ?notification request
@@ -431,18 +488,29 @@ class ProxyListenerS3(ProxyListener):
             if method == 'PUT':
                 return set_lifecycle(bucket, data)
 
+        LOGGER.debug('forward_request - query_map: "%s"' % query_map)
+        if method == 'PUT' and 'x-amz-meta-filename' in query_map:
+            set_user_defined_metadata(bucket, query_map)
+
         if modified_data:
             return Request(data=modified_data, headers=headers, method=method)
         return True
 
     def return_response(self, method, path, data, headers, response):
 
-        bucket_name = get_bucket_name(path, headers)
+        LOGGER.debug('return_response - host: "%s"' % headers['host'])
 
-        # No path-name based bucket name?  Try host-based
+        # Check bucket name in host
+        bucket_name = None
         hostname_parts = headers['host'].split('.')
-        if (not bucket_name or len(bucket_name) == 0) and len(hostname_parts) > 1:
+        if len(hostname_parts) > 1:
             bucket_name = hostname_parts[0]
+        
+        # No bucket name in host, check in path.
+        if (not bucket_name or len(bucket_name) == 0):
+            bucket_name = get_bucket_name(path, headers)
+        
+        LOGGER.debug('return_response - Bucket name: "%s"' % bucket_name)
 
         # POST requests to S3 may include a success_action_redirect field,
         # which should be used to redirect a client to a new location.
@@ -455,10 +523,13 @@ class ProxyListenerS3(ProxyListener):
                 response.headers['Location'] = expand_redirect_url(redirect_url, key, bucket_name)
                 LOGGER.debug('S3 POST {} to {}'.format(response.status_code, response.headers['Location']))
 
+        LOGGER.debug('return_response - path: "%s"' % path)
         parsed = urlparse.urlparse(path)
 
         bucket_name_in_host = headers['host'].startswith(bucket_name)
-
+        LOGGER.debug('return_response - bucket_name_in_host: "%s"' % bucket_name_in_host)
+        LOGGER.debug('return_response - method: "%s"' % method)
+        LOGGER.debug('return_response - parsed.query: "%s"' % parsed.query)
         should_send_notifications = all([
             method in ('PUT', 'POST', 'DELETE'),
             '/' in path[1:] or bucket_name_in_host,
@@ -467,9 +538,11 @@ class ProxyListenerS3(ProxyListener):
             bucket_name_in_host or (len(path[1:].split('/')) > 1 and len(path[1:].split('/')[1]) > 0),
             # don't send notification if url has a query part (some/path/with?query)
             # (query can be one of 'notification', 'lifecycle', 'tagging', etc)
-            not parsed.query
+            # Send notification if parsed.query startswith x-amz-meta-filename
+            not (parsed.query is None) and 'x-amz-meta-filename' in parsed.query
         ])
 
+        LOGGER.debug('return_response - should_send_notifications: "%s"' % should_send_notifications)
         # get subscribers and send bucket notifications
         if should_send_notifications:
             # if we already have a good key, use it, otherwise examine the path
@@ -480,7 +553,9 @@ class ProxyListenerS3(ProxyListener):
             else:
                 parts = parsed.path[1:].split('/', 1)
                 object_path = parts[1] if parts[1][0] == '/' else '/%s' % parts[1]
-
+            LOGGER.debug('return_response - send_notifications: method "%s"' % method)
+            LOGGER.debug('return_response - send_notifications: bucket_name "%s"' % bucket_name)
+            LOGGER.debug('return_response - send_notifications: object_path "%s"' % object_path)
             send_notifications(method, bucket_name, object_path)
 
         # publish event for creation/deletion of buckets:
@@ -495,9 +570,17 @@ class ProxyListenerS3(ProxyListener):
             response.status_code = 204
             return response
 
+        if method == 'PUT':
+            response._content = ''
+            response.status_code = 200
+            return response
+
         if response:
             # append CORS headers to response
             append_cors_headers(bucket_name, request_method=method, request_headers=headers, response=response)
+
+            # append user defined metadata headers to response
+            append_user_defined_metadata_headers(bucket_name, request_method=method, request_headers=headers, response=response)
 
             response_content_str = None
             try:
@@ -525,6 +608,7 @@ class ProxyListenerS3(ProxyListener):
             if method == 'DELETE':
                 response.headers['content-length'] = len(response._content)
 
+            return response
 
 # instantiate listener
 UPDATE_S3 = ProxyListenerS3()

@@ -24,8 +24,11 @@ TMP_ARCHIVE_ES = os.path.join(tempfile.gettempdir(), 'localstack.es.zip')
 TMP_ARCHIVE_DDB = os.path.join(tempfile.gettempdir(), 'localstack.ddb.zip')
 TMP_ARCHIVE_STS = os.path.join(tempfile.gettempdir(), 'aws-java-sdk-sts.jar')
 TMP_ARCHIVE_ELASTICMQ = os.path.join(tempfile.gettempdir(), 'elasticmq-server.jar')
-URL_LOCALSTACK_FAT_JAR = ('http://central.maven.org/maven2/' +
-    'cloud/localstack/localstack-utils/{v}/localstack-utils-{v}-fat.jar').format(v=LOCALSTACK_MAVEN_VERSION)
+
+# Commented to pick jar from nexus.
+# URL_LOCALSTACK_FAT_JAR = ('http://central.maven.org/maven2/' +
+#    'cloud/localstack/localstack-utils/{v}/localstack-utils-{v}-fat.jar').format(v=LOCALSTACK_MAVEN_VERSION)
+URL_LOCALSTACK_FAT_JAR = ('https://github.com/aggansu/localstack/raw/master/libs/localstack-utils-{v}-fat.jar').format(v=LOCALSTACK_MAVEN_VERSION)
 
 # set up logger
 LOGGER = logging.getLogger(__name__)
@@ -119,6 +122,8 @@ def install_lambda_java_libs():
     # install LocalStack "fat" JAR file (contains all dependencies)
     if not os.path.exists(INSTALL_PATH_LOCALSTACK_FAT_JAR):
         LOGGER.info('Downloading and installing LocalStack Java libraries. This may take some time.')
+        LOGGER.info('install_lambda_java_libs - URL_LOCALSTACK_FAT_JAR: %s', URL_LOCALSTACK_FAT_JAR)
+        LOGGER.info('install_lambda_java_libs - INSTALL_PATH_LOCALSTACK_FAT_JAR: %s', INSTALL_PATH_LOCALSTACK_FAT_JAR)
         download(URL_LOCALSTACK_FAT_JAR, INSTALL_PATH_LOCALSTACK_FAT_JAR)
 
 

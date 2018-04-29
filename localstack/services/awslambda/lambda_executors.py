@@ -410,7 +410,7 @@ class LambdaExecutorSeparateContainers(LambdaExecutorContainers):
             command = '"%s"' % handler
 
         env_vars_string = ' '.join(['-e {}="${}"'.format(k, k) for (k, v) in env_vars.items()])
-
+        LOG.debug('LambdaExecutorSeparateContainers - env_vars_string:%s' % env_vars_string)
         if config.LAMBDA_REMOTE_DOCKER:
             cmd = (
                 'CONTAINER_ID="$(docker create'
@@ -442,7 +442,7 @@ class LambdaExecutorLocal(LambdaExecutor):
     def execute(self, func_arn, func_details, event, context=None, version=None, async=False):
         lambda_cwd = func_details.cwd
         environment = func_details.envvars.copy()
-
+        LOG.debug('LambdaExecutorLocal - environment:%s' % environment)
         # execute the Lambda function in a forked sub-process, sync result via queue
         queue = Queue()
 
