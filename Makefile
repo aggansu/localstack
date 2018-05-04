@@ -11,10 +11,10 @@ usage:             ## Show this help
 
 install:           ## Install dependencies in virtualenv
 	@# TODO: There are currently some issues with pip 10.0.0 -> downgrade to 9.0.3 for now
-	(test `which virtualenv` || $(PIP_CMD) install --user virtualenv) && \
+	(test `which virtualenv` || $(PIP_CMD) install --default-timeout=100 --user virtualenv) && \
 		(test -e $(VENV_DIR) || virtualenv $(VENV_OPTS) $(VENV_DIR)) && \
-		($(VENV_RUN) && $(PIP_CMD) -q install pip==9.0.3) && \
-		(test ! -e requirements.txt || ($(VENV_RUN); $(PIP_CMD) install -q six==1.10.0 ; $(PIP_CMD) -q install -r requirements.txt) && \
+		($(VENV_RUN) && $(PIP_CMD) -q install --default-timeout=100 pip==9.0.3) && \
+		(test ! -e requirements.txt || ($(VENV_RUN); $(PIP_CMD) install -q --default-timeout=100 six==1.10.0 ; $(PIP_CMD) -q install --default-timeout=100 -r requirements.txt) && \
 		$(VENV_RUN); PYTHONPATH=. exec python localstack/services/install.py testlibs)
 
 install-web:       ## Install npm dependencies for dashboard Web UI
@@ -66,7 +66,7 @@ docker-push-master:## Push Docker image to registry IF we are currently on the m
 		echo "This is a fork and not the main repo.") || \
 	( \
 		which $(PIP_CMD) || (wget https://bootstrap.pypa.io/get-pip.py && python get-pip.py); \
-		which docker-squash || $(PIP_CMD) install docker-squash; \
+		which docker-squash || $(PIP_CMD) install --default-timeout=100 docker-squash; \
 		docker info | grep Username || docker login -u $$DOCKER_USERNAME -p $$DOCKER_PASSWORD; \
 		BASE_IMAGE_ID=`docker history -q $(IMAGE_NAME):$(IMAGE_TAG) | tail -n 1`; \
 		docker-squash -t $(IMAGE_NAME):$(IMAGE_TAG) -f $$BASE_IMAGE_ID $(IMAGE_NAME):$(IMAGE_TAG) && \
