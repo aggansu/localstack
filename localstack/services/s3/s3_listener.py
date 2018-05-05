@@ -503,7 +503,7 @@ class ProxyListenerS3(ProxyListener):
                 return set_lifecycle(bucket, data)
 
         LOGGER.debug('forward_request - query_map: "%s"' % query_map)
-        if method == 'PUT' and 'x-amz-meta-filename' in query_map:
+        if method == 'PUT' and 'x-amz-meta-filename' in query_map and bucket_name is not None and object_path is not None:
             unique_id = get_unique_id(bucket, object_path)
             set_user_defined_metadata(unique_id, query_map)
 
@@ -540,11 +540,12 @@ class ProxyListenerS3(ProxyListener):
 
         LOGGER.debug('return_response - path: "%s"' % path)
         parsed = urlparse.urlparse(path)
-
         bucket_name_in_host = headers['host'].startswith(bucket_name)
+        object_path = parsed.path
         LOGGER.debug('return_response - bucket_name_in_host: "%s"' % bucket_name_in_host)
         LOGGER.debug('return_response - method: "%s"' % method)
         LOGGER.debug('return_response - parsed.query: "%s"' % parsed.query)
+        LOGGER.debug('return_response - object_path: "%s"' % object_path)
         should_send_notifications = all([
             method in ('PUT', 'POST', 'DELETE'),
             '/' in path[1:] or bucket_name_in_host,
@@ -591,14 +592,15 @@ class ProxyListenerS3(ProxyListener):
         LOGGER.debug('return_response - After method == PUT: response "%s"' % response)
         if response:
             # append CORS headers to response
-            unique_id = get_unique_id(bucket_name, object_path)
-            append_cors_headers(unique_id, request_method=method, request_headers=headers, response=response)
+            append_cors_headers(bucket_name, request_method=method, request_headers=headers, response=response)
             LOGGER.debug('return_response - After append_cors_headers: response "%s"' % response)
 
-            # append user defined metadata headers to response
-            append_user_defined_metadata_headers(bucket_name, request_method=method, request_headers=headers, response=response)
+            if bucket_name is not None and object_path is not None:
+                # append user defined metadata headers to response
+                unique_id = get_unique_id(bucket_name, object_path)
+                append_user_defined_metadata_headers(unique_id, request_method=method, request_headers=headers, response=response)
+                LOGGER.debug('return_response - After append_user_defined_metadata_headers: response "%s"' % response)
 
-            LOGGER.debug('return_response - After append_user_defined_metadata_headers: response "%s"' % response)
             response_content_str = None
             try:
                 response_content_str = to_str(response._content)
