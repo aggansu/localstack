@@ -247,21 +247,32 @@ def append_cors_headers(bucket_name, request_method, request_headers, response):
                 # TODO: check whether bucket versioning is enabled and return proper version id
                 response.headers[header] = 'null'
 
-def set_user_defined_metadata(bucket_name, query_map):
-    LOGGER.debug('set_user_defined_metadata - bucket_name: "%s"' % bucket_name)
+def get_unique_id(bucket_name, object_path):
+    LOGGER.debug('get_unique_id - bucket_name: "%s"' % bucket_name)
+    LOGGER.debug('get_unique_id - object_path: "%s"' % object_path)
+    # try pick the bucket_name from the path
+    object_path = object_path.split('?')[0]
+    LOGGER.debug('get_unique_id - bucket_name: "%s"' % bucket_name)
+    LOGGER.debug('get_unique_id - object_path: "%s"' % object_path)
+    unique_id = bucket_name + object_path
+    LOGGER.debug('get_unique_id - unique_id: "%s"' % unique_id)
+    return unique_id
+
+def set_user_defined_metadata(unique_id, query_map):
+    LOGGER.debug('set_user_defined_metadata - unique_id: "%s"' % unique_id)
     if not query_map:
         return
-    BUCKET_USER_DEFINED_METADATA[bucket_name] = {}
+    BUCKET_USER_DEFINED_METADATA[unique_id] = {}
     for key in query_map:
         LOGGER.debug('set_user_defined_metadata - key: "%s"' % key)
         LOGGER.debug('set_user_defined_metadata - value: "%s"' % query_map[key])
         if key.startswith('x-amz-meta') and query_map[key] is not None:
             LOGGER.debug('set_user_defined_metadata - add - value: "%s"' % query_map[key][0])
-            BUCKET_USER_DEFINED_METADATA[bucket_name][key] = query_map[key][0]
+            BUCKET_USER_DEFINED_METADATA[unique_id][key] = query_map[key][0]
 
-def append_user_defined_metadata_headers(bucket_name, request_method, request_headers, response):
-    LOGGER.debug('append_user_defined_metadata_headers - bucket_name: "%s"' % bucket_name)
-    metadata = BUCKET_USER_DEFINED_METADATA.get(bucket_name)
+def append_user_defined_metadata_headers(unique_id, request_method, request_headers, response):
+    LOGGER.debug('append_user_defined_metadata_headers - unique_id: "%s"' % unique_id)
+    metadata = BUCKET_USER_DEFINED_METADATA.get(unique_id)
     if not metadata:
         return
     for key in metadata:
@@ -403,9 +414,11 @@ class ProxyListenerS3(ProxyListener):
         parsed = urlparse.urlparse(path)
         query = parsed.query
         path = parsed.path
+        object_path = parsed.path
         LOGGER.debug('forward_request - query: "%s"' % query)
         LOGGER.debug('forward_request - path: "%s"' % path)
         LOGGER.debug('forward_request - host: "%s"' % headers['host'])
+        LOGGER.debug('forward_request - object_path: "%s"' % object_path)
 
         # Check bucket name in host
         bucket = None
@@ -490,7 +503,8 @@ class ProxyListenerS3(ProxyListener):
 
         LOGGER.debug('forward_request - query_map: "%s"' % query_map)
         if method == 'PUT' and 'x-amz-meta-filename' in query_map:
-            set_user_defined_metadata(bucket, query_map)
+            unique_id = get_unique_id(bucket, object_path)
+            set_user_defined_metadata(unique_id, query_map)
 
         if modified_data:
             return Request(data=modified_data, headers=headers, method=method)
@@ -575,7 +589,8 @@ class ProxyListenerS3(ProxyListener):
         LOGGER.debug('return_response - After method == PUT: response "%s"' % response)
         if response:
             # append CORS headers to response
-            append_cors_headers(bucket_name, request_method=method, request_headers=headers, response=response)
+            unique_id = get_unique_id(bucket_name, object_path)
+            append_cors_headers(unique_id, request_method=method, request_headers=headers, response=response)
             LOGGER.debug('return_response - After append_cors_headers: response "%s"' % response)
 
             # append user defined metadata headers to response
