@@ -17,7 +17,7 @@ from localstack.utils.common import short_uid, timestamp, TIMESTAMP_FORMAT_MILLI
 from localstack.utils.analytics import event_publisher
 from localstack.services.generic_proxy import ProxyListener
 from localstack.services.s3 import multipart_content
-from thread import start_new_thread
+#from thread import start_new_thread
 
 # mappings for S3 bucket notifications
 S3_NOTIFICATIONS = {}
@@ -573,7 +573,8 @@ class ProxyListenerS3(ProxyListener):
             LOGGER.debug('return_response - send_notifications: bucket_name "%s"' % bucket_name)
             LOGGER.debug('return_response - send_notifications: object_path "%s"' % object_path)
             LOGGER.debug('return_response - start_new_thread - send_notifications')
-            start_new_thread(send_notifications(method, bucket_name, object_path))
+            #start_new_thread(send_notifications(method, bucket_name, object_path))
+            send_notifications(method, bucket_name, object_path)
 
         # publish event for creation/deletion of buckets:
         # if method in ('PUT', 'DELETE') and ('/' not in path[1:] or len(path[1:].split('/')[1]) <= 0):
