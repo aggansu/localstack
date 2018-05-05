@@ -503,7 +503,7 @@ class ProxyListenerS3(ProxyListener):
                 return set_lifecycle(bucket, data)
 
         LOGGER.debug('forward_request - query_map: "%s"' % query_map)
-        if method == 'PUT' and 'x-amz-meta-filename' in query_map and bucket_name is not None and object_path is not None:
+        if method == 'PUT' and 'x-amz-meta-filename' in query_map and bucket is not None and object_path is not None:
             unique_id = get_unique_id(bucket, object_path)
             set_user_defined_metadata(unique_id, query_map)
 
